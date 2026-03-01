@@ -259,3 +259,365 @@ html, body {
     z-index: 1000;
   }
 }
+
+/* ─── Settings Screen ─────────────────────────────────────── */
+
+.settings-title {
+  font-size: 24px;
+}
+
+.settings-panel {
+  width: 85%;
+  max-width: 280px;
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-section {
+  background: #1a1a1b;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-section-title {
+  font-size: 10px;
+  color: #aaff44;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.set-input {
+  background: #0a0a0b;
+  color: #e0e0e0;
+  border: 1px solid #333;
+  border-radius: 2px;
+  padding: 4px 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.set-input:focus {
+  outline: none;
+  border-color: #aaff44;
+}
+
+.slider {
+  width: 100%;
+  margin-top: 4px;
+  accent-color: #aaff44;
+}
+
+.test-result {
+  font-size: 10px;
+  color: #888;
+  min-height: 14px;
+  margin-top: 4px;
+}
+
+/* ─── Achievements Screen ─────────────────────────────────── */
+
+.achievement-list {
+  width: 85%;
+  max-width: 300px;
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ach-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1a1a1b;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 8px 10px;
+}
+
+.ach-unlocked {
+  border-color: #aaff44;
+}
+
+.ach-locked {
+  opacity: 0.5;
+}
+
+.ach-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.ach-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ach-name {
+  font-size: 11px;
+  color: #aaff44;
+  font-weight: bold;
+}
+
+.ach-desc {
+  font-size: 9px;
+  color: #888;
+  line-height: 1.3;
+}
+
+/* ─── Leaderboard Screen ──────────────────────────────────── */
+
+.leaderboard-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.lb-tab {
+  padding: 4px 12px;
+  background: #1a1a1b;
+  border: 1px solid #333;
+  color: #888;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.lb-tab.active {
+  color: #aaff44;
+  border-color: #aaff44;
+}
+
+.leaderboard-list {
+  width: 85%;
+  max-width: 300px;
+  max-height: 55vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lb-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1a1a1b;
+  border: 1px solid #222;
+  border-radius: 2px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.lb-rank {
+  color: #aaff44;
+  font-weight: bold;
+  min-width: 24px;
+}
+
+.lb-score {
+  color: #e0e0e0;
+  font-weight: bold;
+  min-width: 50px;
+}
+
+.lb-detail {
+  color: #666;
+  flex: 1;
+  font-size: 9px;
+}
+
+.lb-mode {
+  color: #555;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+
+.lb-empty {
+  text-align: center;
+  color: #555;
+  font-size: 11px;
+  padding: 20px;
+  font-style: italic;
+}
+
+/* ─── Daily Challenges Screen ─────────────────────────────── */
+
+.daily-list {
+  width: 85%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.daily-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1a1a1b;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 8px 10px;
+}
+
+.daily-done {
+  border-color: #aaff44;
+  opacity: 0.7;
+}
+
+.daily-diff {
+  font-size: 7px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.daily-easy { background: #2a4a2a; color: #88ff88; }
+.daily-medium { background: #4a4a2a; color: #ffff88; }
+.daily-hard { background: #4a2a2a; color: #ff8888; }
+
+.daily-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.daily-name {
+  font-size: 11px;
+  color: #e0e0e0;
+  font-weight: bold;
+}
+
+.daily-desc {
+  font-size: 9px;
+  color: #888;
+}
+
+.daily-status {
+  font-size: 16px;
+  color: #aaff44;
+  flex-shrink: 0;
+}
+
+.daily-streak {
+  font-size: 12px;
+  color: #ff8844;
+  margin-top: 8px;
+}
+
+/* ─── Store Screen ────────────────────────────────────────── */
+
+.store-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 85%;
+  max-width: 300px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.store-tab {
+  padding: 3px 8px;
+  background: #1a1a1b;
+  border: 1px solid #333;
+  color: #888;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.store-tab.active {
+  color: #aaff44;
+  border-color: #aaff44;
+}
+
+.store-coins {
+  font-size: 14px;
+  color: #ffdd44;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.store-list {
+  width: 85%;
+  max-width: 300px;
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.store-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1a1a1b;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 8px 10px;
+}
+
+.store-item.equipped {
+  border-color: #aaff44;
+}
+
+.rarity-common { border-left: 3px solid #888; }
+.rarity-rare { border-left: 3px solid #4488ff; }
+.rarity-epic { border-left: 3px solid #aa44ff; }
+.rarity-legendary { border-left: 3px solid #ffaa44; }
+
+.store-item-name {
+  font-size: 11px;
+  color: #e0e0e0;
+  font-weight: bold;
+  flex: 1;
+}
+
+.store-item-rarity {
+  font-size: 7px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.btn-store {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  padding: 3px 10px;
+  border: 1px solid #333;
+  cursor: pointer;
+  border-radius: 2px;
+  background: #1a1a1b;
+  color: #888;
+}
+
+.btn-equip { color: #aaff44; border-color: #aaff44; }
+.btn-equipped { color: #555; border-color: #555; }
+.btn-buy { color: #ffdd44; border-color: #ffdd44; }
+.btn-disabled { opacity: 0.4; cursor: not-allowed; }
+
+.store-empty {
+  text-align: center;
+  color: #555;
+  padding: 20px;
+  font-style: italic;
+  font-size: 11px;
+}

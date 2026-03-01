@@ -1,247 +1,175 @@
-# SURGE — Bullet Heaven with AI Director
+# ⚡ SURGE
 
-> A mobile-first, portrait-mode bullet-heaven survival game built with **zero dependencies** — vanilla JS, HTML5 Canvas, and ES modules. No build step, no bundler, no framework.
+**A bullet-heaven where the AI learns how you play — and fights back.**
 
-**Inspired by:** League of Legends Swarm mode, Vampire Survivors, and the idea that an AI Director can replace hand-tuned difficulty curves.
+Built from scratch. No engine, no framework, no dependencies. Just vanilla JavaScript, a Canvas, and a bad attitude.
 
 ---
 
-## Quick Start
+## What is this?
 
-### Launch Locally
+SURGE is a mobile-first, portrait-mode bullet-heaven survival game. You auto-fire. Enemies come at you in waves. You dodge, dash, level up, and try to survive 30 waves of increasingly creative mayhem.
+
+The twist? **An AI Director watches everything you do** — your stress level, your dodge patterns, your build choices — and dynamically adjusts what it throws at you. Too comfortable? Here come the Dashers. Tilting? It'll ease off. If you plug in an LLM, it gets *weird* — the Director starts crafting encounters with narrative flavor text and strategic reasoning.
+
+Think Vampire Survivors meets Left 4 Dead's AI Director, shrunk down to a phone screen.
+
+---
+
+## Play It
 
 ```bash
-# Any static file server works. Pick one:
-
-# Python (built-in)
+# Any static server works:
 python3 -m http.server 8080
 
-# Node.js (npx, no install)
+# Or:
 npx serve .
-
-# VS Code Live Server extension
-# Right-click index.html → "Open with Live Server"
 ```
 
-Then open **http://localhost:8080** in a browser (Chrome/Firefox recommended).
+Open **http://localhost:8080**. That's it. No `npm install`, no build step, no waiting.
 
-> **Important:** The game uses ES modules (`import`/`export`), so you **must** serve it over HTTP — opening `index.html` directly via `file://` will fail with CORS errors.
-
-### Controls
-
-| Input | Keyboard | Touch |
-|-------|----------|-------|
-| Move | WASD / Arrow keys | Left-half joystick |
-| Dash | Space | Right-side button |
-| Pause | Escape | — |
-| Auto-fire | Always on | Always on |
-
-### Mobile / Phone
-
-The game is **portrait-first** (240×400 logical pixels, scaled up). On mobile devices, a virtual joystick and dash button appear automatically. Rotate to portrait if prompted.
+> ES modules require HTTP — opening `index.html` via `file://` won't work.
 
 ---
 
-## What Was Built
+## Controls
 
-### Architecture (6,742 lines of code, 24 source files)
+| Action | Keyboard | Touch |
+|--------|----------|-------|
+| Move | WASD / Arrows / Mouse | Touch & drag |
+| Dash | Space | Double-tap |
+| Pause | Escape | — |
+| Fire | Automatic | Automatic |
+
+Portrait mode. 240×400 logical pixels. Scales to any screen.
+
+---
+
+## The Architecture (in 60 seconds)
+
+**Zero dependencies.** No React. No Phaser. No Pixi. The import tree is pure ES modules served as-is.
+
+The whole thing runs on a custom **Entity Component System** — entities are integers, components are Maps, queries use archetype caching. Below that sits a **fixed-timestep game loop** (60Hz physics, interpolated rAF rendering) and a **spatial hash** for broad-phase collision detection.
+
+The AI Director doesn't spawn enemies directly. It picks **encounter cards** — each card is a composition of enemies, formations, and intensity ratings. Three Director modes use this same card abstraction:
+
+- **Classic:** 30 hand-authored waves. Deterministic. Seeded RNG for replays.
+- **Adaptive:** Softmax bandit algorithm driven by a real-time player stress model.
+- **LLM:** Queries an external LLM every few waves with player state. The LLM picks cards, adds modifiers, and writes flavor text. Falls back to Adaptive if the LLM times out.
 
 ```
-index.html              — Game shell (canvas + UI overlays)
-main.js                 — State machine: MENU → PLAYING → UPGRADE → GAMEOVER/VICTORY
-style.css               — Dark theme, pixel-art canvas, responsive overlays
-
-src/
-├── core/               — Engine layer (framework-agnostic)
-│   ├── ecs.js          — Entity Component System (archetype query caching)
-│   ├── engine.js       — Fixed-timestep game loop (60Hz physics + rAF render)
-│   ├── events.js       — Pub/sub event bus (wildcard, once, zero-alloc hot path)
-│   ├── input.js        — Unified keyboard + touch input
-│   └── physics.js      — Spatial hash broad-phase + circle collision
+main.js ─── State machine (MENU → PLAYING → UPGRADE → GAMEOVER)
 │
-├── config/             — All tunable numbers in one place
-│   ├── balance.js      — Screen, arena, player, enemy, director, upgrade constants
-│   ├── cards.js        — 40+ encounter cards (the Director's vocabulary)
-│   └── palettes.js     — 16-color GBC palettes (Moss, Ember)
-│
-├── game/               — Gameplay systems
-│   ├── player.js       — Player entity (movement, dash, auto-fire, stats)
-│   ├── enemies.js      — 7 enemy types + elite/boss framework
-│   ├── projectiles.js  — Player & enemy bullets (homing, pierce, bounce)
-│   ├── collision.js    — Spatial hash resolve (player↔enemy, bullet↔enemy)
-│   ├── arena.js        — Spawn point geometry (edge, pincer, surround, cluster, line)
-│   ├── particles.js    — Pooled particle system (300 max, 3 types)
-│   ├── upgrades.js     — 15 upgrades with stacking (weapon/defense/utility)
-│   └── encounter-cards.js — Card selection: budget scaling, boss priority, greedy fill
-│
-├── agents/             — AI systems
-│   ├── director.js     — The AI Director (Classic mode: 30-wave authored sequence)
-│   └── enemy-brain.js  — Per-type FSM behaviors (7 distinct AI patterns)
-│
-└── ui/                 — Rendering & interface
-    ├── renderer.js     — Canvas 2D pipeline (pixel-perfect scaling, shake, flash)
-    ├── hud.js          — In-game HUD (health, wave, score, combo, XP, upgrades, dash CD)
-    └── touch-controls.js — Virtual joystick + dash button (canvas-rendered)
+├── src/core/         Engine: ECS, game loop, events, input, physics
+├── src/config/       Balance constants, 40+ encounter cards, palettes
+├── src/game/         Player, 7 enemy types, bullets, collision, particles, upgrades
+│                     + pilot rank, achievements, daily challenges, leaderboard,
+│                       mastery, cosmetics, battle pass
+├── src/agents/       AI Director (3 modes), enemy FSM brains, stress model,
+│                     telemetry, coach, LLM adapter, planner-critic, analytics
+├── src/ui/           Canvas renderer, HUD, touch controls, CRT filter,
+│                     report screen, store, tutorial
+├── src/audio/        Procedural Web Audio SFX (no audio files)
+└── prompts/          LLM system prompts (Director + Coach)
 ```
 
-### Implemented Features (Phase 1 + Phase 2 — Issues #1 through #17)
+---
 
-#### Core Engine
-- **Custom ECS** with archetype query caching and deferred entity destruction
-- **Fixed-timestep loop** ("Fix Your Timestep!" pattern) — 60Hz physics, interpolated rendering
-- **Spatial hash** broad-phase collision (32px cells) with circle-circle narrow-phase
-- **Event bus** with `on`/`off`/`once`/`emit`/wildcard `*` support
+## Enemy Types
 
-#### Enemy Types (7)
-| Type | Behavior | Introduced |
-|------|----------|------------|
+| Type | What It Does | Shows Up |
+|------|-------------|----------|
 | **Drifter** | Homing + sinusoidal wobble | Wave 1 |
-| **Dasher** | 4-state FSM: idle → telegraph → charge → recover | Wave 2 |
-| **Sprayer** | Stationary turret, tracks player, fires bullet fans | Wave 3 |
-| **Orbitor** | Maintains orbit around player, fires periodically | Wave 4 |
-| **Splitter** | Homing approach, splits into 2-3 children on death | Wave 4 |
-| **Shielder** | Escorts nearest ally, projects damage-reduction aura | Wave 5 |
-| **Splitter Child** | Faster, smaller splitter fragment (no further split) | Spawned |
+| **Dasher** | Telegraph → charge → recover FSM | Wave 2 |
+| **Sprayer** | Stationary turret, bullet fans | Wave 3 |
+| **Orbitor** | Orbits you, fires periodically | Wave 4 |
+| **Splitter** | Splits into 2-3 children on death | Wave 4 |
+| **Shielder** | Escorts allies with damage-reduction aura | Wave 5 |
 
-All types support **Elite** (1.5× stats, crown accent) and **Boss** (5× HP, 2× size, phase transitions at 50% HP) variants.
+All types come in **Elite** (1.5× stats, crown) and **Boss** (5× HP, 2× size, phase transitions) variants.
 
-#### AI Director
-- **Classic Mode:** 30 hand-authored waves using a curated sequence of encounter cards
-- **Encounter Card System:** 40+ cards organized by category (Swarm, Rush, Turret, Orbit, Splitter, Shield, Mixed, Boss)
-- **Budget Scaling:** Intensity budget grows per wave (`3 + wave × 0.8`), boss waves get +4 budget spike
-- **Formations:** random, cluster, line, pincer, surround — each with geometric spawn positioning
-- **Card Modifiers:** Swift, Dense, Armored, Splitting, Dark, Frenzied (ready for Adaptive/LLM modes)
-- **Seeded RNG** (Mulberry32) for deterministic replays in Classic mode
+---
 
-#### Upgrade System (15 upgrades)
-| Category | Upgrades |
-|----------|----------|
+## Upgrades (15)
+
+| Category | Options |
+|----------|---------|
 | **Weapon** (6) | Spread Shot, Pierce, Rapid Fire, Heavy Rounds, Homing, Ricochet |
-| **Defense** (5) | Shield (absorb hit), Quick Dash, Slow Aura, Regeneration, Plating |
+| **Defense** (5) | Shield, Quick Dash, Slow Aura, Regeneration, Plating |
 | **Utility** (4) | Magnet, Nuke, Decoy, Scanner |
 
-Offered every 3 waves, pick 1 of 3 random choices. Each upgrade stacks up to its limit (1-3).
-
-#### Game Feel
-- Screen shake on player hit
-- Screen flash (colored) on hit/level-up
-- Death burst particles (scaled for bosses vs normal enemies)
-- Combo counter with decay timer
-- Kill feed (right side)
-- Flash messages ("WAVE 3!", "LEVEL UP!", "WAVE CLEAR!")
-
-#### UI
-- **HUD:** Health bar (color-coded), wave counter, score, level, XP bar, combo, enemy count, dash cooldown arc, upgrade icon strip
-- **Menus:** Title screen with palette selector (Moss/Ember) and Director mode selector
-- **Touch Controls:** Canvas-rendered virtual joystick + dash button with cooldown fill animation
-- **Screens:** Menu, Pause, Upgrade Selection, Game Over, Victory — all with backdrop blur
+Pick 1 of 3 every few waves. Each stacks 1-3 times.
 
 ---
 
-## How to Demo / Present
+## The AI Pipeline
 
-### Talking Points
+This is the part I'm most proud of:
 
-1. **"Zero dependencies"** — Open `package.json`? There isn't one. No React, no Phaser, no Pixi. Pure vanilla JS + Canvas 2D. Show the import tree — everything is ES modules.
+1. **Stress Model** — Reads 6 real-time signals (HP ratio, enemy proximity, dodge frequency, DPS taken/given, combo). Outputs a smooth 0-1 stress score.
 
-2. **"Custom ECS"** — Open `src/core/ecs.js`. Entities are integers. Components are Maps. Queries use archetype caching that only rebuilds when entities change. This is the same pattern AAA engines use, implemented in ~280 lines.
+2. **Director** — Consumes stress + telemetry to pick encounter cards. In Adaptive mode, it uses a softmax bandit that balances exploration vs exploitation. In LLM mode, it sends a structured state summary and gets back card picks + narrative.
 
-3. **"The Director thinks in cards"** — Open `src/config/cards.js`. Each card is a spawn composition: enemies, formation, intensity rating, tags. The Director doesn't spawn enemies directly — it picks cards. This is the abstraction layer that makes all three AI modes (Classic, Adaptive, LLM) possible.
+3. **Telemetry** — Per-frame recording: movement heatmap, dodge tracking, DPS windows, build progression.
 
-4. **"Show wave 10"** — Play to wave 10 to see the first boss. The Swarm King is a boss-variant drifter with 5× HP, 2× size, and a phase transition at 50% HP.
+4. **Coach** — After each run, generates a diagnostic report. Analyzes playstyle, identifies improvement areas, gives specific tips based on what actually happened.
 
-5. **"Upgrade build diversity"** — Play two runs and pick different upgrades. Spread Shot + Pierce creates a clearing build. Shield + Armor + Regen creates a tank build. Show how the upgrade stacking works.
+5. **Planner-Critic** — Premium LLM mode. Planner proposes a wave plan, Critic reviews it for balance issues, planner adjusts. Two-agent deliberation loop.
 
-6. **"Mobile-first"** — Open Chrome DevTools → toggle device toolbar → pick any phone. The virtual joystick appears, the canvas scales pixel-perfectly. No DOM overlays — everything is canvas-rendered for 60fps on mobile.
-
-### Demo Script (2 minutes)
-
-1. Open the game in browser. Point out "no build step — just a static file server."
-2. Show the Palette selector (switch Moss ↔ Ember). Show the Mode selector (future modes greyed out).
-3. Hit PLAY. Point out the auto-fire and dash mechanics.
-4. Survive to Wave 3 (upgrade offer). Pick Spread Shot. Explain the upgrade system.
-5. Survive to Wave 6 (Orbitors appear). Point out the new enemy types orbiting.
-6. Die or reach Wave 10. Show the Game Over / Boss screen stats.
-7. (Optional) Open `src/agents/director.js` and show the Classic Sequence — "this is the authored path; the AI Director will generate this dynamically."
+6. **Analytics** — Event batching, privacy controls, local storage fallback.
 
 ---
 
-## What Can Be Done Better (Roadmap)
+## Gamification
 
-### Phase 3 — Stress Model & Adaptive Director (Issues #18-#19)
-- **Player Stress Model:** Real-time stress scoring (0-100) based on HP ratio, enemy proximity, dodge frequency, DPS taken. This feeds the Adaptive Director.
-- **Adaptive Director (Mode 2):** Rule-based card selection using stress + softmax bandit algorithm. Budget scales with 10-wave rolling average. Replaces hand-authored sequences with reactive difficulty.
-
-### Phase 4 — LLM Director (Issues #20-#22)
-- **LLM Integration:** Every 3 waves, query an LLM with structured context (stress, build, history). LLM returns card picks + modifiers + narrative flavor text.
-- **Graceful Fallback:** If LLM fails or times out (3s), falls back to Adaptive mode seamlessly.
-- **Prompt Engineering:** Structured JSON schema for LLM responses, few-shot examples, token budget optimization.
-
-### Phase 5 — Coach Agent (Issues #23-#25)
-- Post-run analysis screen with LLM-generated tips
-- "Coach says..." callouts during gameplay (e.g., "You're not using dash — try it!")
-- Build recommendations based on enemy composition
-
-### Phase 6 — Progression & Meta (Issues #26-#30)
-- localStorage persistence (best scores, unlocks, settings)
-- XP and leveling system across runs
-- Character unlocks with different starting stats
-
-### Phase 7 — Cosmetics (Issues #31-#35)
-- More palettes (Ocean, Crimson, Neon)
-- Particle themes per palette
-- Unlockable visual effects
-
-### Phase 8 — Polish & Launch (Issues #36-#43)
-- Sound effects (Web Audio API, no files — synthesized)
-- Performance profiling + optimization (target: 60fps on iPhone SE)
-- PWA manifest + service worker for offline play
-- Accessibility (screen reader announcements, high-contrast mode)
-- Analytics + telemetry for difficulty tuning
-
-### Technical Debt / Improvements
-- **Testing:** No tests yet. The ECS, physics, and card selection systems are pure functions — ideal candidates for unit testing.
-- **TypeScript:** Currently vanilla JS with JSDoc annotations. Migration to TypeScript would catch the API mismatches found during development (wrong import styles, wrong parameter counts).
-- **Asset Pipeline:** Currently everything is code-rendered (shapes, not sprites). A sprite sheet system would improve visual quality.
-- **Object Pooling:** Bullets and particles use basic pooling — enemies and ECS entities don't. Under heavy load (Wave 20+, 50+ entities), GC pressure could cause frame drops.
-- **Netcode:** The fixed-timestep + seeded RNG architecture was deliberately chosen to support potential future replay/spectator features, but no networking exists yet.
-- **Build Step:** Adding a bundler (esbuild/Vite) would enable tree-shaking, minification, and source maps for production. Currently the 24-file ES module graph loads fine but isn't optimized.
+- **Pilot Rank** — 20 ranks from Rookie to Legend. XP from waves, bosses, completions, no-hit bonuses.
+- **40 Achievements** — Combat, Survival, Mastery, and Fun categories. "Kill 1000 enemies." "Win without dashing." "Have all 15 upgrades."
+- **Daily Challenges** — 3 per day (easy/medium/hard), deterministic from date seed. Streak tracking.
+- **Leaderboard** — Top 50 local runs. Sort by score, wave, or kills. Seed sharing for challenge runs.
+- **Mastery** — Per-upgrade and per-enemy mastery tiers (Bronze → Diamond).
+- **Cosmetics** — 10 categories, 35+ items, 4 rarity tiers. Trails, death effects, bullet skins, titles.
+- **Battle Pass** — 30-tier seasonal system with free + premium tracks.
+- **Store** — Browse and purchase cosmetics with in-game coins earned from runs.
 
 ---
 
-## Tech Stack
+## Polish
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Vanilla JavaScript (ES2022+, ES Modules) |
-| Rendering | HTML5 Canvas 2D (`CanvasRenderingContext2D`) |
-| Architecture | Custom ECS + Pub/Sub EventBus |
-| Physics | Spatial Hash + Circle Collision |
-| AI | FSM enemy behaviors + Encounter Card system |
-| Styling | CSS (no preprocessor) |
+- **Procedural Audio** — All SFX generated via Web Audio API oscillators and noise. Shoot, hit, death, level up, wave clear, dash, game over, victory. Plus an ambient drone soundtrack. Zero audio files.
+- **CRT Filter** — Scanlines, vignette, subtle flicker. Toggle in settings.
+- **Screen Shake & Flash** — Juice on every hit and level up.
+- **Coach Report** — Post-run terminal overlay with CRT aesthetic.
+- **Onboarding Tutorial** — First-run interactive walkthrough covering all core mechanics.
+- **PWA** — Manifest + service worker. Install to homescreen, play offline.
+- **Object Pooling** — Particle and vector pools to reduce GC pressure at high entity counts.
+- **Settings** — LLM config (endpoint, key, model, token budget), audio sliders, visual toggles.
+
+---
+
+## Tech
+
+| | |
+|---|---|
+| Language | Vanilla JavaScript (ES2022+) |
+| Rendering | HTML5 Canvas 2D |
+| Architecture | Custom ECS + Pub/Sub + Fixed Timestep |
+| AI | Stress Model + Bandit Director + LLM integration |
+| Audio | Web Audio API (procedural) |
 | Dependencies | **None** |
-| Build Step | **None** — serve static files |
-| Lines of Code | ~6,742 (24 source files) |
+| Build Step | **None** |
+| Source Files | 40+ |
 
 ---
 
-## Project Structure Summary
+## What I'd Do Next
 
-| Directory | Purpose | Files |
-|-----------|---------|-------|
-| `/` | Entry point + shell | `index.html`, `main.js`, `style.css` |
-| `src/core/` | Engine layer | ECS, game loop, events, input, physics |
-| `src/config/` | Tuning & data | Balance constants, encounter cards, palettes |
-| `src/game/` | Gameplay | Player, enemies, bullets, collision, particles, upgrades |
-| `src/agents/` | AI systems | Director, enemy behaviors |
-| `src/ui/` | Rendering | Canvas renderer, HUD, touch controls |
+- **Unit tests** — The ECS, physics, and card systems are pure functions. Perfect candidates.
+- **TypeScript migration** — Catch the API mismatches at compile time instead of runtime.
+- **Sprite assets** — Currently everything is code-rendered shapes. Sprites would elevate the look.
+- **Netcode** — The seeded RNG + fixed timestep was chosen specifically to enable future replay/spectator features.
+- **Cloud leaderboard** — Currently local only. A simple serverless function could power global rankings.
+- **More enemy types** — The FSM brain system makes adding new enemies straightforward.
 
 ---
 
-## License
-
-Private project — not open source.
-
----
-
-*Built by Ayoub Chamakhi — March 2026*
+*Built by Ayoub Chamakhi — 2026*

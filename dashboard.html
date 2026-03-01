@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SURGE — Owner Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0b; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 20px; }
+    h1 { color: #aaff44; margin-bottom: 20px; letter-spacing: 4px; }
+    h2 { color: #66ff66; margin: 20px 0 10px; font-size: 14px; letter-spacing: 2px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { background: #1a1a1b; border: 1px solid #333; border-radius: 4px; padding: 16px; }
+    .card .label { font-size: 10px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
+    .card .value { font-size: 24px; color: #aaff44; font-weight: bold; margin-top: 4px; }
+    .card .sub { font-size: 10px; color: #666; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { padding: 6px 8px; text-align: left; font-size: 11px; border-bottom: 1px solid #222; }
+    th { color: #aaff44; font-weight: bold; letter-spacing: 1px; }
+    td { color: #ccc; }
+    .empty { text-align: center; color: #555; padding: 40px; font-style: italic; }
+    #refresh { background: #aaff44; color: #0a0a0b; border: none; padding: 8px 20px; cursor: pointer;
+      font-family: 'Courier New', monospace; font-weight: bold; letter-spacing: 2px; margin-bottom: 20px; }
+    #refresh:hover { background: #88dd22; }
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 12px; }
+    .tab { padding: 6px 16px; background: #1a1a1b; border: 1px solid #333; color: #888; cursor: pointer;
+      font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 1px; }
+    .tab.active { color: #aaff44; border-color: #aaff44; }
+    .section { display: none; }
+    .section.active { display: block; }
+  </style>
+</head>
+<body>
+  <h1>⚡ SURGE DASHBOARD</h1>
+  <button id="refresh">↻ REFRESH</button>
+
+  <div class="tab-bar">
+    <div class="tab active" data-section="health">Session Health</div>
+    <div class="tab" data-section="gameplay">Gameplay</div>
+    <div class="tab" data-section="director">Director</div>
+    <div class="tab" data-section="engagement">Engagement</div>
+    <div class="tab" data-section="raw">Raw Events</div>
+  </div>
+
+  <!-- Session Health -->
+  <div id="health" class="section active">
+    <h2>SESSION HEALTH</h2>
+    <div class="grid">
+      <div class="card"><div class="label">Total Sessions</div><div class="value" id="stat-sessions">-</div></div>
+      <div class="card"><div class="label">Total Runs</div><div class="value" id="stat-runs">-</div></div>
+      <div class="card"><div class="label">Avg Session Duration</div><div class="value" id="stat-avg-duration">-</div></div>
+      <div class="card"><div class="label">Unique Players</div><div class="value" id="stat-players">-</div></div>
+    </div>
+  </div>
+
+  <!-- Gameplay -->
+  <div id="gameplay" class="section">
+    <h2>GAMEPLAY METRICS</h2>
+    <div class="grid">
+      <div class="card"><div class="label">Avg Wave Reached</div><div class="value" id="stat-avg-wave">-</div></div>
+      <div class="card"><div class="label">Win Rate</div><div class="value" id="stat-win-rate">-</div></div>
+      <div class="card"><div class="label">Avg Score</div><div class="value" id="stat-avg-score">-</div></div>
+      <div class="card"><div class="label">Most Popular Mode</div><div class="value" id="stat-pop-mode">-</div></div>
+    </div>
+    <h2>RECENT RUNS</h2>
+    <table>
+      <thead><tr><th>Time</th><th>Wave</th><th>Score</th><th>Kills</th><th>Mode</th></tr></thead>
+      <tbody id="runs-table"></tbody>
+    </table>
+  </div>
+
+  <!-- Director -->
+  <div id="director" class="section">
+    <h2>DIRECTOR ANALYTICS</h2>
+    <div class="grid">
+      <div class="card"><div class="label">Avg Stress (All Runs)</div><div class="value" id="stat-avg-stress">-</div></div>
+      <div class="card"><div class="label">Mode Distribution</div><div class="value" id="stat-mode-dist">-</div></div>
+    </div>
+  </div>
+
+  <!-- Engagement -->
+  <div id="engagement" class="section">
+    <h2>ENGAGEMENT</h2>
+    <div class="grid">
+      <div class="card"><div class="label">Avg Runs/Session</div><div class="value" id="stat-runs-session">-</div></div>
+      <div class="card"><div class="label">Retention (repeat players)</div><div class="value" id="stat-retention">-</div></div>
+    </div>
+  </div>
+
+  <!-- Raw Events -->
+  <div id="raw" class="section">
+    <h2>RAW EVENT LOG</h2>
+    <div id="raw-events" style="max-height: 400px; overflow-y: auto; font-size: 10px; color: #888;"></div>
+  </div>
+
+  <script>
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.section).classList.add('active');
+      });
+    });
+
+    function loadData() {
+      let events = [];
+      try { events = JSON.parse(localStorage.getItem('surge_analytics_local') || '[]'); } catch {}
+
+      // Session health
+      const sessions = events.filter(e => e.type === 'session_start');
+      const runs = events.filter(e => e.type === 'run_end');
+      const players = new Set(events.map(e => e.sid)).size;
+
+      document.getElementById('stat-sessions').textContent = sessions.length;
+      document.getElementById('stat-runs').textContent = runs.length;
+      document.getElementById('stat-players').textContent = players;
+      document.getElementById('stat-avg-duration').textContent = runs.length > 0
+        ? Math.round(runs.reduce((s, r) => s + (r.time || 0), 0) / runs.length) + 's'
+        : '-';
+
+      // Gameplay
+      if (runs.length > 0) {
+        document.getElementById('stat-avg-wave').textContent = (runs.reduce((s, r) => s + (r.wave || 0), 0) / runs.length).toFixed(1);
+        const wins = runs.filter(r => (r.wave || 0) >= 30).length;
+        document.getElementById('stat-win-rate').textContent = ((wins / runs.length) * 100).toFixed(0) + '%';
+        document.getElementById('stat-avg-score').textContent = Math.round(runs.reduce((s, r) => s + (r.score || 0), 0) / runs.length);
+
+        const modes = {};
+        runs.forEach(r => { modes[r.mode || 'classic'] = (modes[r.mode || 'classic'] || 0) + 1; });
+        const topMode = Object.entries(modes).sort((a, b) => b[1] - a[1])[0];
+        document.getElementById('stat-pop-mode').textContent = topMode ? topMode[0] : '-';
+
+        document.getElementById('stat-runs-session').textContent = (runs.length / Math.max(1, sessions.length)).toFixed(1);
+      }
+
+      // Runs table
+      const tbody = document.getElementById('runs-table');
+      tbody.innerHTML = runs.slice(-20).reverse().map(r => `
+        <tr>
+          <td>${new Date(r.ts).toLocaleString()}</td>
+          <td>${r.wave || '-'}</td>
+          <td>${r.score || '-'}</td>
+          <td>${r.kills || '-'}</td>
+          <td>${r.mode || 'classic'}</td>
+        </tr>
+      `).join('');
+
+      // Raw events
+      document.getElementById('raw-events').innerHTML = events.slice(-100).reverse()
+        .map(e => `<div>[${new Date(e.ts).toLocaleTimeString()}] ${e.type}: ${JSON.stringify(e).slice(0, 120)}</div>`)
+        .join('');
+    }
+
+    document.getElementById('refresh').addEventListener('click', loadData);
+    loadData();
+  </script>
+</body>
+</html>

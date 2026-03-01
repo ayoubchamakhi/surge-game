@@ -21,6 +21,9 @@ import { getRandomSpawnPoint, getPincerSpawnPoints, getSurroundSpawnPoints } fro
 import { CARD_DECK as FULL_DECK, CARD_MAP, getCard as getCardDef, getEligibleCards, MODIFIERS } from '../config/cards.js';
 import { pickCards, getIntensityBudget, applyModifier } from '../game/encounter-cards.js';
 import { getStress, getTargetStress, getStressDelta, getStressSignals } from './stress-model.js';
+import { getLLMAdapter } from './llm-adapter.js';
+import { DIRECTOR_SYSTEM_PROMPT } from '../config/prompts.js';
+import { planAndCritique } from './planner-critic.js';
 
 // ─── Director State ──────────────────────────────────────────
 
@@ -79,6 +82,17 @@ const state = {
 
   /** Mid-wave spawn rate multiplier (1.0 = normal) */
   midWaveSpawnMult: 1.0,
+
+  // ── LLM Mode State ──
+
+  /** LLM-planned waves: { wave: N, cards: [...] } */
+  llmPlan: [],
+  /** Whether we're using premium planner/critic mode */
+  llmPremium: false,
+  /** Last LLM tip */
+  llmTip: '',
+  /** Pending LLM query (promise) */
+  _llmPending: null,
 };
 
 // ─── Seeded RNG (Mulberry32) ─────────────────────────────────
@@ -182,6 +196,12 @@ export function initDirector(options = {}) {
   state.rationale = '';
   state.midWaveSpawnMult = 1.0;
 
+  // LLM state
+  state.llmPlan = [];
+  state.llmPremium = options.llmPremium || false;
+  state.llmTip = '';
+  state._llmPending = null;
+
   // Adaptive state
   state.banditRewards = {};
   state.banditCounts = {};
@@ -235,8 +255,24 @@ export function startNextWave() {
   } else if (state.mode === 'classic') {
     cardIds = _classicPick(state.wave);
     rationale = `Classic sequence: wave ${state.wave}`;
+  } else if (state.mode === 'llm') {
+    // Check if we have a pre-planned wave from LLM
+    const planned = state.llmPlan.find(p => p.wave === state.wave);
+    if (planned && planned.cards && planned.cards.length > 0) {
+      cardIds = planned.cards;
+      rationale = planned.rationale || 'LLM pre-planned wave';
+    } else {
+      // Fallback to adaptive between LLM queries
+      const result = _adaptivePick(state.wave);
+      cardIds = result.cardIds;
+      rationale = '[LLM fallback → Adaptive] ' + result.rationale;
+    }
+
+    // Trigger LLM query every N waves (async, results used for future waves)
+    if (state.wave % DIRECTOR.LLM_QUERY_INTERVAL === 0 && !state._llmPending) {
+      _triggerLLMQuery(state.wave);
+    }
   } else {
-    // LLM will be implemented in Phase 4 — fallback to adaptive
     const result = _adaptivePick(state.wave);
     cardIds = result.cardIds;
     rationale = result.rationale;
@@ -737,6 +773,117 @@ function _midWaveAdjust() {
   }
 }
 
+// ─── LLM Director Integration ────────────────────────────────
+
+/**
+ * Build compact state summary for LLM query (target ≤200 input tokens).
+ * @param {number} wave
+ * @returns {string}
+ */
+function _buildLLMStateSummary(wave) {
+  const eligible = getEligibleCards(wave);
+  const stress = getStress();
+  const target = getTargetStress(wave);
+  const signals = getStressSignals();
+  const budget = getIntensityBudget(wave);
+
+  // Compact card list
+  const cards = eligible.slice(0, 20).map(c => ({
+    id: c.id, name: c.name, intensity: c.intensity,
+    tags: c.tags.slice(0, 3),
+  }));
+
+  // Weakness summary (top 2)
+  const types = Object.entries(state.weaknessMap);
+  types.sort((a, b) => a[1] - b[1]);
+  const weakness = types.slice(0, 2).map(t => t[0]);
+
+  return JSON.stringify({
+    wave,
+    stress: Math.round(stress),
+    target: Math.round(target),
+    hp: `${_getPlayerHp()}`,
+    build: _getPlayerBuild(),
+    weakness,
+    available_cards: cards,
+    intensity_budget: budget,
+  });
+}
+
+function _getPlayerHp() {
+  try {
+    const pid = world.query('player')[0];
+    if (!pid) return '?/?';
+    const p = world.get(pid, 'player');
+    return `${p.hp}/${p.maxHp}`;
+  } catch { return '?/?'; }
+}
+
+function _getPlayerBuild() {
+  try {
+    const pid = world.query('player')[0];
+    if (!pid) return [];
+    const p = world.get(pid, 'player');
+    return Object.entries(p.upgrades || {}).filter(([, v]) => v > 0).map(([k, v]) => `${k}×${v}`);
+  } catch { return []; }
+}
+
+/**
+ * Trigger an async LLM query for the next 3 waves.
+ * Results are stored in state.llmPlan for future wave picks.
+ * @param {number} currentWave
+ */
+async function _triggerLLMQuery(currentWave) {
+  if (state._llmPending) return;
+  state._llmPending = true;
+
+  try {
+    const stateJson = _buildLLMStateSummary(currentWave);
+    let result;
+
+    if (state.llmPremium) {
+      // Premium mode: Planner + Critic
+      result = await planAndCritique(stateJson);
+    } else {
+      // Standard mode: single query
+      const llm = getLLMAdapter();
+      if (!llm || !llm.isConfigured()) { state._llmPending = false; return; }
+      const llmResult = await llm.query(DIRECTOR_SYSTEM_PROMPT, stateJson);
+      if (llmResult) {
+        try {
+          const parsed = JSON.parse(_extractJsonFromLLM(llmResult.response));
+          result = parsed;
+        } catch (e) {
+          console.warn('[Director/LLM] Failed to parse LLM response:', e.message);
+        }
+      }
+    }
+
+    if (result?.waves && Array.isArray(result.waves)) {
+      // Store plans for upcoming waves
+      state.llmPlan = result.waves.map(w => ({
+        wave: w.wave,
+        cards: w.cards || [],
+        rationale: `[LLM] ${w.rationale || ''}`,
+      }));
+      state.llmTip = result.tip || '';
+      bus.emit('director:llm_plan', { waves: state.llmPlan, tip: state.llmTip });
+    }
+  } catch (e) {
+    console.error('[Director/LLM] Query failed:', e.message);
+  }
+
+  state._llmPending = false;
+}
+
+function _extractJsonFromLLM(text) {
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) return jsonMatch[0];
+  return text;
+}
+
 // ─── Rationale Templates ─────────────────────────────────────
 
 /**
@@ -747,11 +894,19 @@ export function getDirectorRationale() {
   return state.rationale;
 }
 
+/**
+ * Get the last LLM tip.
+ * @returns {string}
+ */
+export function getLLMTip() {
+  return state.llmTip;
+}
+
 // ─── Exports ─────────────────────────────────────────────────
 
 export { state as directorState, FULL_DECK as CARD_DECK };
 export default {
   initDirector, startNextWave, updateDirector, onUpgradePicked,
   getDirectorState, shutdownDirector, getCard, getDirectorRationale,
-  CARD_DECK: FULL_DECK,
+  getLLMTip, CARD_DECK: FULL_DECK,
 };

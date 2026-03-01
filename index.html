@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0a0a0b">
+  <link rel="manifest" href="manifest.json">
   <title>SURGE</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -29,13 +30,18 @@
         <label class="option-label">Mode
           <select id="sel-mode" class="sel">
             <option value="classic" selected>Classic (30 waves)</option>
-            <option value="adaptive" disabled>Adaptive (soon)</option>
-            <option value="llm" disabled>LLM Director (soon)</option>
+            <option value="adaptive">Adaptive</option>
+            <option value="llm">LLM Director</option>
           </select>
         </label>
       </div>
       <button id="btn-play" class="btn">▶ PLAY</button>
-      <div class="version">v0.2.0 — Phase 2</div>
+      <button id="btn-settings" class="btn btn-secondary">⚙ SETTINGS</button>
+      <button id="btn-achievements" class="btn btn-secondary">🏆 ACHIEVEMENTS</button>
+      <button id="btn-leaderboard" class="btn btn-secondary">📊 LEADERBOARD</button>
+      <button id="btn-daily" class="btn btn-secondary">📅 DAILY</button>
+      <button id="btn-store" class="btn btn-secondary">🛒 STORE</button>
+      <div class="version">v0.8.0 — Phase 8</div>
     </div>
 
     <!-- Game Over Screen -->
@@ -65,6 +71,91 @@
     <div id="upgrade-screen" class="screen">
       <div class="title upgrade-title">LEVEL UP!</div>
       <div id="upgrade-choices" class="upgrade-choices"></div>
+    </div>
+
+    <!-- Settings Screen -->
+    <div id="settings-screen" class="screen">
+      <div class="title settings-title">SETTINGS</div>
+      <div class="settings-panel">
+        <div class="settings-section">
+          <div class="settings-section-title">LLM Configuration</div>
+          <label class="option-label">API Endpoint
+            <input id="set-endpoint" class="set-input" type="text" placeholder="https://api.openai.com/v1" />
+          </label>
+          <label class="option-label">API Key
+            <input id="set-apikey" class="set-input" type="password" placeholder="sk-..." />
+          </label>
+          <label class="option-label">Model
+            <input id="set-model" class="set-input" type="text" placeholder="gpt-4o-mini" />
+          </label>
+          <label class="option-label">Token Budget
+            <input id="set-tokens" class="set-input" type="number" value="4000" min="500" max="50000" />
+          </label>
+          <label class="option-label">
+            <input id="set-premium" type="checkbox" /> Premium Mode (Planner + Critic)
+          </label>
+          <button id="btn-test-llm" class="btn btn-secondary">Test Connection</button>
+          <div id="llm-test-result" class="test-result"></div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Audio</div>
+          <label class="option-label">Master Volume
+            <input id="set-master-vol" type="range" min="0" max="100" value="70" class="slider" />
+          </label>
+          <label class="option-label">SFX Volume
+            <input id="set-sfx-vol" type="range" min="0" max="100" value="80" class="slider" />
+          </label>
+          <label class="option-label">Music Volume
+            <input id="set-music-vol" type="range" min="0" max="100" value="50" class="slider" />
+          </label>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Visual</div>
+          <label class="option-label">
+            <input id="set-crt" type="checkbox" checked /> CRT Filter
+          </label>
+          <label class="option-label">
+            <input id="set-shake" type="checkbox" checked /> Screen Shake
+          </label>
+        </div>
+      </div>
+      <button id="btn-settings-back" class="btn">← BACK</button>
+    </div>
+
+    <!-- Achievements Screen -->
+    <div id="achievements-screen" class="screen">
+      <div class="title">ACHIEVEMENTS</div>
+      <div id="achievement-list" class="achievement-list"></div>
+      <button id="btn-ach-back" class="btn">← BACK</button>
+    </div>
+
+    <!-- Leaderboard Screen -->
+    <div id="leaderboard-screen" class="screen">
+      <div class="title">LEADERBOARD</div>
+      <div class="leaderboard-tabs">
+        <button class="lb-tab active" data-sort="score">Score</button>
+        <button class="lb-tab" data-sort="wave">Wave</button>
+        <button class="lb-tab" data-sort="kills">Kills</button>
+      </div>
+      <div id="leaderboard-list" class="leaderboard-list"></div>
+      <button id="btn-lb-back" class="btn">← BACK</button>
+    </div>
+
+    <!-- Daily Challenges Screen -->
+    <div id="daily-screen" class="screen">
+      <div class="title">DAILY CHALLENGES</div>
+      <div id="daily-list" class="daily-list"></div>
+      <div id="daily-streak" class="daily-streak"></div>
+      <button id="btn-daily-back" class="btn">← BACK</button>
+    </div>
+
+    <!-- Store Screen -->
+    <div id="store-screen" class="screen">
+      <div class="title">STORE</div>
+      <div id="store-coins" class="store-coins">💰 0</div>
+      <div id="store-tabs" class="store-tabs"></div>
+      <div id="store-list" class="store-list"></div>
+      <button id="btn-store-back" class="btn">← BACK</button>
     </div>
   </div>
 
