@@ -18,8 +18,9 @@ import world from '../core/ecs.js';
 import bus from '../core/events.js';
 import { spawnEnemy, getEnemyCount } from '../game/enemies.js';
 import { getRandomSpawnPoint, getPincerSpawnPoints, getSurroundSpawnPoints } from '../game/arena.js';
-import { CARD_DECK as FULL_DECK, CARD_MAP, getCard as getCardDef, getEligibleCards } from '../config/cards.js';
-import { pickCards, getIntensityBudget } from '../game/encounter-cards.js';
+import { CARD_DECK as FULL_DECK, CARD_MAP, getCard as getCardDef, getEligibleCards, MODIFIERS } from '../config/cards.js';
+import { pickCards, getIntensityBudget, applyModifier } from '../game/encounter-cards.js';
+import { getStress, getTargetStress, getStressDelta, getStressSignals } from './stress-model.js';
 
 // ─── Director State ──────────────────────────────────────────
 
@@ -30,12 +31,14 @@ const state = {
   wave: 0,
   /** Is a wave currently active? */
   waveActive: false,
-  /** Current stress score (0-100) */
+  /** Current stress score (0-100) — synced from stress model */
   stress: 0,
   /** Spawn queue for current wave */
   spawnQueue: [],
   /** Timer for next spawn in queue */
   spawnTimer: 0,
+  /** Base spawn delay (can be modulated mid-wave) */
+  spawnDelay: DIRECTOR.SPAWN_DELAY_BASE,
   /** Cards played this wave */
   currentCards: [],
   /** History of decisions */
@@ -56,6 +59,26 @@ const state = {
   bossActive: false,
   /** Run in progress? */
   running: false,
+
+  // ── Adaptive Mode State ──
+
+  /** Softmax bandit: card_id → cumulative reward */
+  banditRewards: {},
+  /** Softmax bandit: card_id → play count */
+  banditCounts: {},
+  /** Temperature for softmax (decays over waves) */
+  banditTemperature: 1.0,
+
+  /** Weakness tracking: enemy_type → deaths-by-player count in recent waves */
+  weaknessMap: {},
+  /** Deaths-by-type this wave */
+  deathsByType: {},
+
+  /** Last decision rationale text */
+  rationale: '',
+
+  /** Mid-wave spawn rate multiplier (1.0 = normal) */
+  midWaveSpawnMult: 1.0,
 };
 
 // ─── Seeded RNG (Mulberry32) ─────────────────────────────────
@@ -147,6 +170,7 @@ export function initDirector(options = {}) {
   state.stress = 0;
   state.spawnQueue = [];
   state.spawnTimer = 0;
+  state.spawnDelay = DIRECTOR.SPAWN_DELAY_BASE;
   state.currentCards = [];
   state.history = [];
   state.pauseTimer = 0;
@@ -155,6 +179,15 @@ export function initDirector(options = {}) {
   state.upgradePhase = false;
   state.bossActive = false;
   state.running = true;
+  state.rationale = '';
+  state.midWaveSpawnMult = 1.0;
+
+  // Adaptive state
+  state.banditRewards = {};
+  state.banditCounts = {};
+  state.banditTemperature = 1.0;
+  state.weaknessMap = {};
+  state.deathsByType = {};
 
   state.seed = options.seed ?? (Math.random() * 0xFFFFFFFF) | 0;
   state._rng = mulberry32(state.seed);
@@ -171,27 +204,51 @@ export function initDirector(options = {}) {
 export function startNextWave() {
   if (!state.running) return;
 
+  // ── End-of-wave bandit reward (for previous wave) ──
+  if (state.wave > 0 && (state.mode === 'adaptive' || state.mode === 'llm')) {
+    _updateBanditRewards();
+    _updateWeaknessMap();
+    // Decay temperature for softmax
+    state.banditTemperature = Math.max(0.3, state.banditTemperature * 0.95);
+  }
+
   state.wave++;
   state.waveActive = true;
   state.waveEnemiesSpawned = 0;
   state.waveEnemiesKilled = 0;
   state.spawnQueue = [];
   state.spawnTimer = 0;
+  state.spawnDelay = DIRECTOR.SPAWN_DELAY_BASE;
+  state.midWaveSpawnMult = 1.0;
+  state.deathsByType = {};
+
+  // Sync stress from model
+  state.stress = getStress();
 
   // Pick cards based on mode
   let cardIds;
-  if (state.mode === 'classic') {
+  let rationale = '';
+  if (state.mode === 'adaptive') {
+    const result = _adaptivePick(state.wave);
+    cardIds = result.cardIds;
+    rationale = result.rationale;
+  } else if (state.mode === 'classic') {
     cardIds = _classicPick(state.wave);
+    rationale = `Classic sequence: wave ${state.wave}`;
   } else {
-    // Adaptive/LLM will be implemented in Phase 3/4
-    cardIds = _classicPick(state.wave);
+    // LLM will be implemented in Phase 4 — fallback to adaptive
+    const result = _adaptivePick(state.wave);
+    cardIds = result.cardIds;
+    rationale = result.rationale;
   }
 
   state.currentCards = cardIds;
+  state.rationale = rationale;
 
   // Build spawn queue from cards
   for (const cardId of cardIds) {
-    const card = CARD_MAP.get(cardId);
+    // Support modified cards (with : in id)
+    const card = CARD_MAP.get(cardId) || CARD_MAP.get(cardId.split(':')[0]);
     if (!card) continue;
     _enqueueCard(card);
   }
@@ -201,6 +258,9 @@ export function startNextWave() {
     cards: cardIds,
     mode: state.mode,
     stress: state.stress,
+    target: getTargetStress(state.wave),
+    delta: getStressDelta(),
+    rationale,
   };
   state.history.push(decision);
 
@@ -215,6 +275,9 @@ export function startNextWave() {
  */
 export function updateDirector(dt) {
   if (!state.running) return;
+
+  // Sync stress from model every frame
+  state.stress = getStress();
 
   // ── Between-wave pause ──
   if (!state.waveActive && state.wave > 0 && !state.upgradePhase) {
@@ -233,13 +296,19 @@ export function updateDirector(dt) {
 
   if (state.upgradePhase) return;
 
+  // ── Mid-wave adaptive adjustments ──
+  if (state.mode === 'adaptive' || state.mode === 'llm') {
+    _midWaveAdjust();
+  }
+
   // ── Process spawn queue ──
   if (state.spawnQueue.length > 0) {
     state.spawnTimer -= dt;
+    const effectiveDelay = state.spawnDelay * state.midWaveSpawnMult;
     if (state.spawnTimer <= 0) {
       const spawn = state.spawnQueue.shift();
       _executeSpawn(spawn);
-      state.spawnTimer = DIRECTOR.SPAWN_DELAY_BASE;
+      state.spawnTimer = effectiveDelay;
     }
   }
 
@@ -262,7 +331,13 @@ export function onUpgradePicked() {
  * @returns {object}
  */
 export function getDirectorState() {
-  return { ...state, spawnQueue: undefined, _rng: undefined };
+  return {
+    ...state,
+    spawnQueue: undefined,
+    _rng: undefined,
+    stressTarget: getTargetStress(state.wave),
+    stressDelta: getStressDelta(),
+  };
 }
 
 /**
@@ -363,9 +438,16 @@ function _executeSpawn(spawn) {
 
 /**
  * Handle enemy death event.
+ * @param {number} id — entity id
+ * @param {object} data — { type, score, xp, x, y, isBoss, isElite }
  */
-function _onEnemyDeath() {
+function _onEnemyDeath(id, data) {
   state.waveEnemiesKilled++;
+
+  // Track deaths by type for weakness analysis
+  if (data && data.type) {
+    state.deathsByType[data.type] = (state.deathsByType[data.type] || 0) + 1;
+  }
 }
 
 /**
@@ -388,10 +470,288 @@ function _onWaveClear() {
   }
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─── ADAPTIVE DIRECTOR ENGINE ─────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Adaptive card selection: reads stress delta to decide intensity,
+ * uses softmax bandit for exploration vs exploitation, and
+ * exploits detected player weaknesses (bounded at EXPLOIT_CAP).
+ *
+ * @param {number} wave
+ * @returns {{ cardIds: string[], rationale: string }}
+ */
+function _adaptivePick(wave) {
+  const budget = getIntensityBudget(wave);
+  const delta = getStressDelta();
+  const stress = getStress();
+  const target = getTargetStress(wave);
+  const eligible = getEligibleCards(wave);
+  const signals = getStressSignals();
+  const rng = state._rng;
+
+  if (eligible.length === 0) return { cardIds: [], rationale: 'No eligible cards.' };
+
+  // ── Boss waves always get their boss card ──
+  if (wave % 10 === 0) {
+    const bossCards = eligible.filter(c => c.tags.includes('boss'));
+    if (bossCards.length > 0) {
+      const boss = bossCards[Math.floor(rng() * bossCards.length)];
+      return {
+        cardIds: [boss.id],
+        rationale: `🔴 Boss wave ${wave}. Deploying ${boss.name}.`,
+      };
+    }
+  }
+
+  // ── Determine intensity policy from stress delta ──
+  let intensityBias = 0;   // -1 to +1: negative = easier, positive = harder
+  let policyName = 'balanced';
+  const reasons = [];
+
+  if (delta > DIRECTOR.STRESS_TOLERANCE) {
+    // Player is overstressed → ease up
+    intensityBias = -0.5 - (delta - DIRECTOR.STRESS_TOLERANCE) / 100;
+    policyName = 'easing';
+    reasons.push(`Stress ${Math.round(stress)} exceeds target ${Math.round(target)} by ${Math.round(delta)}.`);
+    reasons.push('Selecting lower-intensity cards. Delaying spawns.');
+  } else if (delta < -DIRECTOR.STRESS_TOLERANCE) {
+    // Player is bored → push harder
+    intensityBias = 0.5 + (-delta - DIRECTOR.STRESS_TOLERANCE) / 100;
+    policyName = 'pushing';
+    reasons.push(`Stress ${Math.round(stress)} is below target ${Math.round(target)} by ${Math.round(-delta)}.`);
+    reasons.push('Selecting higher-intensity cards. Adding modifiers.');
+  } else {
+    policyName = 'balanced';
+    reasons.push(`Stress ${Math.round(stress)} near target ${Math.round(target)}. Balanced selection.`);
+  }
+
+  intensityBias = Math.max(-1, Math.min(1, intensityBias));
+
+  // ── Filter cards by intensity policy ──
+  const midIntensity = budget / 2;
+  let filteredCards;
+
+  if (intensityBias < -0.2) {
+    // Prefer lower-intensity cards
+    filteredCards = eligible.filter(c => c.intensity <= midIntensity + 1 && !c.tags.includes('boss'));
+  } else if (intensityBias > 0.2) {
+    // Prefer higher-intensity cards
+    filteredCards = eligible.filter(c => c.intensity >= midIntensity - 1 && !c.tags.includes('boss'));
+  } else {
+    filteredCards = eligible.filter(c => !c.tags.includes('boss'));
+  }
+
+  if (filteredCards.length === 0) filteredCards = eligible.filter(c => !c.tags.includes('boss'));
+  if (filteredCards.length === 0) filteredCards = eligible;
+
+  // ── Softmax bandit card selection ──
+  const cardIds = _softmaxSelect(filteredCards, budget, rng);
+
+  // ── Weakness exploitation (bounded at EXPLOIT_CAP) ──
+  const weakExploit = _weaknessExploit(eligible, wave, rng);
+  if (weakExploit) {
+    // Replace up to EXPLOIT_CAP % of total spawns with weakness cards
+    const maxExploitCards = Math.max(1, Math.floor(cardIds.length * DIRECTOR.EXPLOIT_CAP));
+    let added = 0;
+    if (weakExploit.cardId && added < maxExploitCards) {
+      cardIds.push(weakExploit.cardId);
+      added++;
+      reasons.push(weakExploit.reason);
+    }
+  }
+
+  // ── Apply modifiers when pushing ──
+  const finalCards = [];
+  for (const cId of cardIds) {
+    if (intensityBias > 0.3 && rng() < 0.3) {
+      // 30% chance to modify a card when pushing
+      const modKeys = Object.keys(MODIFIERS);
+      const modKey = modKeys[Math.floor(rng() * modKeys.length)];
+      const modified = applyModifier(cId, modKey);
+      if (modified) {
+        // Register the modified card temporarily in CARD_MAP
+        CARD_MAP.set(modified.id, modified);
+        finalCards.push(modified.id);
+        reasons.push(`Applied ${MODIFIERS[modKey].label} modifier to ${cId}.`);
+        continue;
+      }
+    }
+    finalCards.push(cId);
+  }
+
+  const rationale = `[${policyName.toUpperCase()}] ` + reasons.join(' ');
+
+  return { cardIds: finalCards, rationale };
+}
+
+/**
+ * Softmax bandit: select cards proportionally to reward scores.
+ * Higher temperature = more exploration, lower = more exploitation.
+ *
+ * @param {Array} eligible — eligible card objects
+ * @param {number} budget — max total intensity
+ * @param {Function} rng
+ * @returns {string[]} — selected card IDs
+ */
+function _softmaxSelect(eligible, budget, rng) {
+  const T = state.banditTemperature;
+  const result = [];
+  let remaining = budget;
+  const used = new Set();
+
+  // Compute softmax probabilities
+  const scores = eligible.map(c => {
+    const reward = state.banditRewards[c.id] || 0;
+    const count = state.banditCounts[c.id] || 0;
+    // Average reward + exploration bonus
+    const avgReward = count > 0 ? reward / count : 0.5;
+    return { card: c, score: avgReward };
+  });
+
+  // Softmax with temperature
+  const maxScore = Math.max(...scores.map(s => s.score));
+  const expScores = scores.map(s => ({
+    card: s.card,
+    exp: Math.exp((s.score - maxScore) / T),
+  }));
+  const sumExp = expScores.reduce((s, e) => s + e.exp, 0);
+
+  // Sample cards until budget is filled
+  let attempts = 0;
+  while (remaining > 0 && attempts < 50) {
+    attempts++;
+
+    // Weighted random selection
+    let roll = rng() * sumExp;
+    let chosen = null;
+    for (const e of expScores) {
+      roll -= e.exp;
+      if (roll <= 0) {
+        chosen = e.card;
+        break;
+      }
+    }
+    if (!chosen) chosen = expScores[expScores.length - 1].card;
+
+    // Skip already picked (avoid duplicate cards)
+    if (used.has(chosen.id)) continue;
+
+    // Check budget
+    if (chosen.intensity <= remaining) {
+      result.push(chosen.id);
+      remaining -= chosen.intensity;
+      used.add(chosen.id);
+    }
+  }
+
+  // Ensure at least one card
+  if (result.length === 0 && eligible.length > 0) {
+    result.push(eligible[Math.floor(rng() * eligible.length)].id);
+  }
+
+  return result;
+}
+
+/**
+ * Update softmax bandit rewards after a wave completes.
+ * Reward = how close actual stress stayed to target.
+ * Good wave = stress near target → high reward for played cards.
+ */
+function _updateBanditRewards() {
+  const delta = Math.abs(getStressDelta());
+  // Reward inversely proportional to stress delta (closer to target = better)
+  const reward = Math.max(0, 1 - delta / 50);
+
+  for (const cardId of state.currentCards) {
+    const baseId = cardId.split(':')[0]; // Strip modifier suffix
+    state.banditRewards[baseId] = (state.banditRewards[baseId] || 0) + reward;
+    state.banditCounts[baseId] = (state.banditCounts[baseId] || 0) + 1;
+  }
+}
+
+/**
+ * Update the weakness map from deaths-by-type this wave.
+ * Tracks which enemy types the player kills fastest (= weakest against player).
+ * The director will avoid those types or exploit them based on policy.
+ */
+function _updateWeaknessMap() {
+  for (const type in state.deathsByType) {
+    state.weaknessMap[type] = (state.weaknessMap[type] || 0) + state.deathsByType[type];
+  }
+}
+
+/**
+ * Exploit detected player weaknesses: find enemy types the player
+ * kills SLOWEST (= hardest for the player) and select cards featuring them.
+ * Bounded at EXPLOIT_CAP of wave enemy count.
+ *
+ * @param {Array} eligible
+ * @param {number} wave
+ * @param {Function} rng
+ * @returns {{ cardId: string, reason: string }|null}
+ */
+function _weaknessExploit(eligible, wave, rng) {
+  if (Object.keys(state.weaknessMap).length < 2) return null;
+
+  // Find the type killed LEAST (proportionally = player weakness)
+  const types = Object.entries(state.weaknessMap);
+  types.sort((a, b) => a[1] - b[1]); // Ascending by kill count
+
+  const weakType = types[0][0]; // Least killed = hardest for player
+
+  // Find cards featuring this type
+  const matchCards = eligible.filter(c =>
+    c.enemies.some(e => e.type === weakType) && !c.tags.includes('boss')
+  );
+
+  if (matchCards.length === 0) return null;
+
+  const card = matchCards[Math.floor(rng() * matchCards.length)];
+  return {
+    cardId: card.id,
+    reason: `Exploiting weakness: player struggles vs ${weakType}. Deploying ${card.name}.`,
+  };
+}
+
+/**
+ * Mid-wave spawn rate adjustments.
+ * Runs every frame during an active wave (adaptive/LLM modes).
+ * - Stress > 85: slow spawns to 80% rate
+ * - Stress < 30: accelerate spawns to 120% rate
+ * - Otherwise: normal rate
+ */
+function _midWaveAdjust() {
+  if (!state.waveActive) return;
+
+  const stress = getStress();
+
+  if (stress > 85) {
+    state.midWaveSpawnMult = 1 / DIRECTOR.MID_WAVE_SLOW_FACTOR; // Slower spawns (larger delay)
+  } else if (stress < 30 && state.wave > 2) {
+    state.midWaveSpawnMult = DIRECTOR.MID_WAVE_SLOW_FACTOR; // Faster spawns (shorter delay)
+  } else {
+    // Smooth return to normal
+    state.midWaveSpawnMult += (1.0 - state.midWaveSpawnMult) * 0.05;
+  }
+}
+
+// ─── Rationale Templates ─────────────────────────────────────
+
+/**
+ * Get the Director's last decision rationale.
+ * @returns {string}
+ */
+export function getDirectorRationale() {
+  return state.rationale;
+}
+
 // ─── Exports ─────────────────────────────────────────────────
 
 export { state as directorState, FULL_DECK as CARD_DECK };
 export default {
   initDirector, startNextWave, updateDirector, onUpgradePicked,
-  getDirectorState, shutdownDirector, getCard, CARD_DECK: FULL_DECK,
+  getDirectorState, shutdownDirector, getCard, getDirectorRationale,
+  CARD_DECK: FULL_DECK,
 };

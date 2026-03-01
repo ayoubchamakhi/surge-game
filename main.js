@@ -24,6 +24,16 @@ import { updateParticles, renderParticles, clearParticles, spawnHitSpark, spawnD
 // ─── Director ────────────────────────────────────────────────
 import { initDirector, startNextWave, updateDirector, onUpgradePicked, shutdownDirector, getDirectorState } from './src/agents/director.js';
 
+// ─── Stress Model ────────────────────────────────────────────
+import { initStressModel, updateStressModel, shutdownStressModel, resetStressModel } from './src/agents/stress-model.js';
+
+// ─── Telemetry ───────────────────────────────────────────────
+import { initTelemetry, recordFrame, shutdownTelemetry, getRunSummary } from './src/agents/telemetry.js';
+
+// ─── Coach Report ────────────────────────────────────────────
+import { generateCoachReport } from './src/agents/coach.js';
+import { showReportScreen } from './src/ui/report-screen.js';
+
 // ─── UI ──────────────────────────────────────────────────────
 import { updateHud, renderHud, setHudHealth, setHudScore, setHudWave, setHudXp, setHudUpgrades, setHudDash, setHudEnemyCount, setHudLevel, incrementCombo, showFlash, resetHud } from './src/ui/hud.js';
 import { detectTouch, updateTouchControls, renderTouchControls } from './src/ui/touch-controls.js';
@@ -106,6 +116,7 @@ function pickUpgrade(upgradeId) {
   if (data) {
     applyUpgradeToPlayer(upgradeId, data);
   }
+  bus.emit('upgrade:picked', { id: upgradeId, wave: getDirectorState().wave });
   showScreen(null);
   currentState = GAME_STATE.PLAYING;
   onUpgradePicked();
@@ -157,7 +168,9 @@ function startRun() {
   // Create player at center
   createPlayer();
 
-  // Init Director with selected mode
+  // Init AI systems
+  initStressModel();
+  initTelemetry();
   const mode = document.getElementById('sel-mode')?.value || 'classic';
   initDirector({ mode });
 
@@ -174,6 +187,11 @@ function startRun() {
 
 function endRun(reason) {
   currentState = reason === 'victory' ? GAME_STATE.VICTORY : GAME_STATE.GAMEOVER;
+
+  // Capture run summary before shutdown
+  const runSummary = getRunSummary();
+  shutdownTelemetry();
+  shutdownStressModel();
   shutdownDirector();
   engine.pause();
 
@@ -186,13 +204,19 @@ function endRun(reason) {
     Level: ${level}
   `;
 
-  if (reason === 'victory') {
-    $vicStats.innerHTML = statsHtml;
-    showScreen('victory-screen');
-  } else {
-    $goStats.innerHTML = statsHtml;
-    showScreen('gameover-screen');
-  }
+  // Generate Coach Report
+  const coachReport = generateCoachReport(runSummary);
+
+  // Show coach report first, then show game over / victory screen
+  showReportScreen(coachReport, () => {
+    if (reason === 'victory') {
+      $vicStats.innerHTML = statsHtml;
+      showScreen('victory-screen');
+    } else {
+      $goStats.innerHTML = statsHtml;
+      showScreen('gameover-screen');
+    }
+  });
 }
 
 // ─── Engine Callbacks ────────────────────────────────────────
@@ -246,6 +270,12 @@ engine.onUpdate = (dt) => {
 
   // Collision detection
   updateCollisions(dt);
+
+  // Telemetry (record per-frame data)
+  recordFrame(dt);
+
+  // Stress model (reads game state, feeds director)
+  updateStressModel(dt);
 
   // Director (wave management)
   updateDirector(dt);
@@ -408,7 +438,7 @@ function init() {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   showScreen('menu-screen');
-  console.log('%c⚡ SURGE v0.2.0 — Phase 2', 'color: #aaff44; font-weight: bold; font-size: 14px;');
+  console.log('%c⚡ SURGE v0.3.0 — Phase 3 AI', 'color: #aaff44; font-weight: bold; font-size: 14px;');
 }
 
 init();
