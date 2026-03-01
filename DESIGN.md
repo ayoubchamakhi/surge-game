@@ -74,7 +74,7 @@
 
 ## 4. AGENT ARCHITECTURE
 
-Seven agents with clear boundaries. Each is a standalone module with a defined interface — swappable, testable, mockable.
+Six agents with clear boundaries. Each is a standalone module with a defined interface — swappable, testable, mockable.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -93,17 +93,19 @@ Seven agents with clear boundaries. Each is a standalone module with a defined i
 │ion,  ││stress  ││targeting,││report,││screen shake  │
 │spawn ││targets ││formation ││drills ││              │
 └──────┘└───┬────┘└──────────┘└───────┘└───────────────┘
-            │                     │
-            ▼                     ▼
-     ┌─────────────┐     ┌──────────────┐
-     │ LLM ADAPTER │     │  ANALYTICS   │
-     │    AGENT    │     │    AGENT     │
-     │ (optional)  │     │ Batches,     │
-     │ Formats →   │     │ anonymizes,  │
-     │ prompt,     │     │ transports   │
-     │ parses,     │     │ events       │
-     │ fallback    │     │              │
-     └─────────────┘     └──────────────┘
+            │
+            ▼
+     ┌─────────────┐
+     │ LLM ADAPTER │  (optional — only in Mode 3)
+     │    AGENT    │
+     │             │
+     │ Formats     │
+     │ state →     │
+     │ prompt,     │
+     │ parses      │
+     │ response,   │
+     │ fallback    │
+     └─────────────┘
 ```
 
 ### Agent Contracts
@@ -116,7 +118,6 @@ Seven agents with clear boundaries. Each is a standalone module with a defined i
 | **CoachAgent** | Full run telemetry log | Structured report + drill | Once at run end |
 | **UIAgent** | World state, HUD data, events | Canvas draw calls, input events | Every frame |
 | **LLMAdapterAgent** | Compact state JSON | Structured decision JSON | Every 3-5 waves (Mode 3 only) |
-| **AnalyticsAgent** | Game events (kills, deaths, upgrades, purchases) | Batched event payloads | On run-end + session-end |
 
 ---
 
@@ -171,8 +172,8 @@ Stress
    │                    ╱──╲╱
  70│              ╱──╲╱      ──╲
    │        ╱──╲╱                ╲
- 40│  ╱──╲╱
-   │╱
+ 40│  ╱──╲╱                       
+   │╱                              
  10│
    └──────────────────────────────── Wave
     1    5    10   15   20   25
@@ -409,7 +410,7 @@ Upgrades stack — getting Spread Shot 3 times = firing 4 projectiles. Max stack
 ## 12. FILE STRUCTURE
 
 ```
-surge-game/
+14_Game/
 ├── index.html                 # Entry point, canvas + UI shell
 ├── style.css                  # Minimal styling, CRT filter, touch layout
 ├── main.js                    # Bootstrap, game state machine
@@ -804,8 +805,6 @@ The **AnalyticsAgent** is the 7th agent in the system:
 | **Touch controls** | Virtual joystick + auto-fire | Tap-to-move (imprecise), tilt (unreliable) |
 | **Build system** | None (ES modules) | Vite/Webpack (adds friction for hackathon demo) |
 | **Audio** | Web Audio procedural SFX | Audio files (size), no audio (less juicy) |
-| **Monetization** | Cosmetics only, no pay-to-win | Gameplay unlocks (splits playerbase), loot boxes (predatory) |
-| **Analytics** | Opt-in, anonymous, batched | Always-on tracking (privacy), per-frame (expensive), none (blind) |
 
 ---
 

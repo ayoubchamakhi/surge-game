@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0a0b">
+  <title>SURGE</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ─── Game Canvas ─────────────────────────────────────── -->
+  <canvas id="game"></canvas>
+
+  <!-- ─── UI Overlays (hidden by default, toggled by JS) ── -->
+  <div id="ui-layer">
+    <!-- Title Screen -->
+    <div id="menu-screen" class="screen active">
+      <div class="title">SURGE</div>
+      <div class="subtitle">BULLET HEAVEN</div>
+      <button id="btn-play" class="btn">▶ PLAY</button>
+      <div class="version">v0.1.0 — Phase 1</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameover-screen" class="screen">
+      <div class="title gameover-title">GAME OVER</div>
+      <div id="go-stats" class="stats"></div>
+      <button id="btn-retry" class="btn">↻ RETRY</button>
+      <button id="btn-menu" class="btn btn-secondary">MENU</button>
+    </div>
+
+    <!-- Victory Screen -->
+    <div id="victory-screen" class="screen">
+      <div class="title victory-title">VICTORY</div>
+      <div id="vic-stats" class="stats"></div>
+      <button id="btn-vic-retry" class="btn">↻ PLAY AGAIN</button>
+      <button id="btn-vic-menu" class="btn btn-secondary">MENU</button>
+    </div>
+
+    <!-- Pause Overlay -->
+    <div id="pause-screen" class="screen">
+      <div class="title">PAUSED</div>
+      <button id="btn-resume" class="btn">▶ RESUME</button>
+      <button id="btn-quit" class="btn btn-secondary">✕ QUIT</button>
+    </div>
+
+    <!-- Upgrade Selection -->
+    <div id="upgrade-screen" class="screen">
+      <div class="title upgrade-title">LEVEL UP!</div>
+      <div id="upgrade-choices" class="upgrade-choices"></div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

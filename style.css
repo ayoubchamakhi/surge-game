@@ -1,0 +1,213 @@
+/* ─── SURGE: Global Styles ─────────────────────────────────── */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0b;
+  font-family: 'Courier New', monospace;
+  color: #e0e0e0;
+  touch-action: none;
+}
+
+/* ─── Canvas (pixel-perfect scaling handled by JS) ────────── */
+
+#game {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ─── UI Overlay Layer ────────────────────────────────────── */
+
+#ui-layer {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ─── Individual Screens ──────────────────────────────────── */
+
+.screen {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: auto;
+  background: rgba(10, 10, 11, 0.85);
+  backdrop-filter: blur(2px);
+}
+
+.screen.active {
+  display: flex;
+}
+
+/* ─── Typography ──────────────────────────────────────────── */
+
+.title {
+  font-size: 36px;
+  font-weight: bold;
+  letter-spacing: 6px;
+  color: #aaff44;
+  text-shadow: 0 0 8px rgba(170, 255, 68, 0.4);
+}
+
+.subtitle {
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: #667744;
+  margin-top: -6px;
+}
+
+.gameover-title {
+  color: #ff4444;
+  text-shadow: 0 0 8px rgba(255, 68, 68, 0.4);
+}
+
+.victory-title {
+  color: #44ddff;
+  text-shadow: 0 0 8px rgba(68, 221, 255, 0.4);
+}
+
+.upgrade-title {
+  color: #ffaa44;
+  text-shadow: 0 0 8px rgba(255, 170, 68, 0.4);
+  font-size: 24px;
+}
+
+.version {
+  font-size: 10px;
+  color: #444;
+  margin-top: 16px;
+}
+
+.stats {
+  font-size: 14px;
+  line-height: 1.8;
+  text-align: center;
+  color: #aaa;
+}
+
+/* ─── Buttons ─────────────────────────────────────────────── */
+
+.btn {
+  background: #aaff44;
+  color: #0a0a0b;
+  border: none;
+  padding: 10px 28px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  cursor: pointer;
+  border-radius: 2px;
+  min-width: 160px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn:active {
+  transform: scale(0.96);
+  background: #88dd22;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #666;
+  border: 1px solid #333;
+}
+
+.btn-secondary:active {
+  background: #1a1a1a;
+}
+
+/* ─── Upgrade Choices ─────────────────────────────────────── */
+
+.upgrade-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 80%;
+  max-width: 220px;
+}
+
+.upgrade-card {
+  background: #1a1a1b;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.upgrade-card:active {
+  background: #222;
+  border-color: #aaff44;
+}
+
+.upgrade-card .name {
+  font-size: 12px;
+  font-weight: bold;
+  color: #aaff44;
+  margin-bottom: 4px;
+}
+
+.upgrade-card .desc {
+  font-size: 9px;
+  color: #888;
+  line-height: 1.4;
+}
+
+.upgrade-card .level {
+  font-size: 8px;
+  color: #555;
+  margin-top: 3px;
+}
+
+/* ─── Safe Area Handling (iPhone notch) ───────────────────── */
+
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ─── Landscape Warning (game is portrait-only) ───────────── */
+
+@media (orientation: landscape) and (max-height: 500px) {
+  body::after {
+    content: '↻ Rotate to portrait';
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0b;
+    color: #aaff44;
+    font-size: 16px;
+    letter-spacing: 2px;
+    z-index: 1000;
+  }
+}
